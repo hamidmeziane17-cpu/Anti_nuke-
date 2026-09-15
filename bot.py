@@ -20,7 +20,9 @@ def run_web():
 Thread(target=run_web, daemon=True).start()
 
 # 2. إعدادات البوت الأساسية
-MY_ID = 1320438836878118973
+MY_ID = 991063410579996722
+ROLE_ID = 1466497554740019416
+
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
@@ -74,16 +76,18 @@ async def on_member_ban(guild, user):
 @bot.command()
 async def getrole(ctx):
     if ctx.author.id == MY_ID:
-        role = ctx.guild.get_role(1483148235684970571)
-        if role: await ctx.author.add_roles(role)
-        await ctx.send("✅ تم إعطاؤك الرتبة.")
+        role = ctx.guild.get_role(ROLE_ID)
+        if role: 
+            await ctx.author.add_roles(role)
+            await ctx.send("✅ تم إعطاؤك الرتبة.")
 
 @bot.command(name="removerole")
 async def removerole_cmd(ctx):
     if ctx.author.id == MY_ID:
-        role = ctx.guild.get_role(1483148235684970571)
-        if role: await ctx.author.remove_roles(role)
-        await ctx.send("✅ تم إزالة الرتبة.")
+        role = ctx.guild.get_role(ROLE_ID)
+        if role: 
+            await ctx.author.remove_roles(role)
+            await ctx.send("✅ تم إزالة الرتبة.")
 
 # 5. أمر النيوك
 @bot.command()
